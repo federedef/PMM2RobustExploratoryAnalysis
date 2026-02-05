@@ -1,0 +1,132 @@
+<div style="overflow: hidden; display: flex; flex-direction: row; justify-content: center;">
+${ plotter.boxplot(id = 'final_table', header = True, row_names = False, smp_attr = [1,2,3], fields= [4],
+												title= "",
+												x_label= "",
+                                                format='long', 
+                                                group = ["Gene"],
+                                                config={
+                                                    "toolbarType": "under",
+                                                    "xAxisTitle": "",
+                                                    "title": "",
+                                                    "objectColorTransparency": 1,
+                                                    "theme": "cx",
+                                                    "colorScheme": "CanvasXpress",
+                                                    "groupingFactors": ["Gene"],
+                                                    "dessagregateSamplesBy": ["Dim"],
+                                                    "xAxis": ["PatGroup","Gene"],
+                                                    "maxSmpStringLen": 80,
+                                                    "graphOrientation": "vertical",
+                                                    "smpTextRotate": 30,
+                                                    "smpTextScaleFontFactor": 1.2,
+                                                    "graphType": "Boxplot",
+                                                    "colorBy": ["PatGroup"],
+                                                    "segregateSamplesBy": "Dim"
+                                                    }) }
+</div>
+<%
+    import pandas as pd 
+    data = plotter.hash_vars["final_table"]
+    columns = data[0]
+    rows = data[1:]
+    df = pd.DataFrame(rows, columns=columns)
+    df['Counts'] = pd.to_numeric(df['Counts'])
+    plotter.hash_vars["final_table"] = df
+
+    def custom_boxplot(data, plotter_list):
+        ax = plotter_list["sns"].boxplot(data=data, x='Gene', y='Counts', hue='PatGroup')
+        plotter_list["plt"].xticks(rotation=90, ha='center', fontsize=8)
+        plotter_list["plt"].tight_layout()
+        return ax
+
+    from statannotations.Annotator import Annotator
+    import numpy as np
+    from scipy import stats
+
+    def custom_boxplot_faceted(data, plotter_list):
+        sns = plotter_list["sns"]
+        plt = plotter_list["plt"]
+
+        def benjamini_hochberg(pvals):
+            pvals = np.array(pvals)
+            n = len(pvals)
+            sorted_indices = np.argsort(pvals)
+            sorted_pvals = pvals[sorted_indices]
+            adjusted = np.empty(n)
+            for i in range(n):
+                adjusted[i] = sorted_pvals[i] * n / (i + 1)
+            adjusted = np.minimum.accumulate(adjusted[::-1])[::-1]
+            adjusted = np.clip(adjusted, 0, 1)
+            reordered = np.empty(n)
+            reordered[sorted_indices] = adjusted
+            return reordered.tolist()
+
+        sns.set_style("whitegrid")
+        sns.set_context("paper", font_scale=1.3)
+
+        g = sns.FacetGrid(
+            data,
+            col="Dim",
+            col_wrap=3,
+            aspect=1.6,
+            height=4,
+            sharey=False,
+            sharex=False
+        )
+
+        g.map_dataframe(
+            sns.boxplot,
+            x="Gene",
+            y="Counts",
+            hue="PatGroup",
+            linewidth=0.8,
+            palette="pastel",
+            fliersize=0,
+            showfliers=False,
+            dodge=True
+        )
+
+        for ax, (dim_name, subdata) in zip(g.axes.flat, data.groupby("Dim")):
+            genes = subdata["Gene"].unique()
+            pairs = []
+            pvals = []
+
+            for gene in genes:
+                gene_data = subdata[subdata["Gene"] == gene]
+                patgroups = gene_data["PatGroup"].unique()
+                if len(patgroups) == 2:
+                    group1 = gene_data[gene_data["PatGroup"] == patgroups[0]]["Counts"]
+                    group2 = gene_data[gene_data["PatGroup"] == patgroups[1]]["Counts"]
+                    stat, pval = stats.ttest_ind(group1, group2, equal_var=True) #stats.ttest_rel(group1, group2)
+                    pairs.append(((gene, patgroups[0]), (gene, patgroups[1])))
+                    pvals.append(pval)
+                    print("----------")
+                    print(f"Gen --- {gene}")
+                    print("For the pair -I:", group1)
+                    print("For the pair -II", group2)
+                    print("The pval is:", pval)
+                    
+                print("the pvalues are:", pvals)
+
+            if pairs:
+                fdr_pvals = pvals # benjamini_hochberg(pvals)
+                annotator = Annotator(ax, pairs, data=subdata, x="Gene", y="Counts", hue="PatGroup")
+                annotator.configure(text_format="star", loc="outside", line_height=0.03, verbose=0)
+                annotator.set_pvalues_and_annotate(fdr_pvals)
+
+        for ax in g.axes.flat:
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=35, ha='right', fontsize=10)
+            ax.tick_params(axis='x', length=4, width=1)
+            ax.tick_params(axis='y', labelsize=10)
+            sns.despine(ax=ax)
+
+        g.add_legend(title="Severity Group")
+        g.set_titles(col_template="{col_name}", size=12, y=1.12)
+        g.set_axis_labels("", "Counts")
+        g.fig.subplots_adjust(top=0.7, bottom=0.26, left=0.1, right=0.8)
+
+        return g
+%>
+
+${print(plotter.hash_vars["final_table"])}
+${plotter.static_plot_main( id="final_table", header=True, row_names=False, raw = True, width=600, height=600,dpi=1000, 
+                plotting_function= lambda data, plotter_list: custom_boxplot_faceted(data, plotter_list)  )}

@@ -1,0 +1,26 @@
+boxplot_generation){
+    source ~soft_bio_267/initializes/init_python
+    source ~/projects/PMM2REA/venv/bin/activate
+    head -n 1 $datasets/genes_n.txt | tr -s "\t" "\n" > head_genes
+    tail -n +2 $datasets/genes_n.txt | sort > table_genes
+    head -n 1 $datasets/miRNA_n.txt | tr -s "\t" "\n" > head_mirnas
+    tail -n +2 $datasets/miRNA_n.txt | sort > table_mirnas
+    join -1 1 -2 1 table_genes table_mirnas | tr -s " " "\t" > table_genes_mirna_n.txt
+    cat head_genes head_mirnas | tr -s "\n" "\t" > head_genes_mirna_n.txt
+    cat head_genes_mirna_n.txt table_genes_mirna_n.txt > table_mfa_n.txt
+    ?
+    report_boxplot.py --patients2genes $datasets/genes_n.txt --genes $results_from_ma/genes_n.txt --output gene
+    report_boxplot.py --patients2genes $datasets/miRNA_n.txt --genes $results_from_ma/mirna_n.txt --output mirna
+    report_boxplot.py --patients2genes table_mfa_n.txt --genes $results_from_ma/mfa_n.txt --output mfa
+}
+
+%get_enrichment){
+    source ~soft_bio_267/initializes/init_degenes_hunter
+    source ~soft_bio_267/initializes/init_python
+    tail -n +2 $results_from_ma/genes.txt | awk 'BEGIN{FS=OFS="\t"}{print $2, $1}' | aggregate_column_data -i - -x 1 -a 2 > gene_top_groups.txt
+    tail -n +2 $results_from_ma/mfa.txt | awk 'BEGIN{FS=OFS="\t"}{print $2, $1}' | grep "\<ENSG" | aggregate_column_data -i - -x 1 -a 2 > mfa_top_groups.txt
+    ?
+    clusters_to_enrichment.R -i gene_top_groups.txt -w 5 -o genes_functional_results -f MF,BP,CC,KEGG,Reactome -P 0.05 -k ENSEMBL -O "Human"
+    clusters_to_enrichment.R -i mfa_top_groups.txt  -w 5 -o mfa_functional_results -f MF,BP,CC,KEGG,Reactome -P 0.05 -k ENSEMBL -O "Human"
+}
+

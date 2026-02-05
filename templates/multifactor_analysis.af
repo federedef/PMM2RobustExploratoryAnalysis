@@ -1,0 +1,65 @@
+%mca_all_cohort){
+    source ~/dev_R/ExpHunterSuite/init_degenes_hunter
+    ln -s $datasets/all_cohort/* .
+    ?
+    multivar_mine.R -i "severity_scales.txt,phenotypes_n.txt" -A "phenotypes_n.txt:n" \
+     -S "severity_scales.txt:c" -c -n 2
+    multivar_mine.R -i "severity_scales.txt,phenotypes.txt" -A "phenotypes.txt:n" \
+     -S "severity_scales.txt:c" -c -n 2 -o results_tr
+    #multivar_mine.R -i "../MFA_all_genes/severity_scales.txt,../MFA_all_genes/phenotypes.txt" \
+     #-A "phenotypes.txt:n" -S "severity_scales.txt:c"
+    #multivar_mine.R -i "severity_scales.txt,phenotypes_n.txt" -A "phenotypes_n.txt:n" \
+    # -S "severity_scales.txt:c" -c -o result_test
+}
+
+mfa_code_with_metab){
+    source ~/dev_R/ExpHunterSuite/init_degenes_hunter
+    ln -s $datasets/sample_cohort/* .
+    mkdir -p results
+    ?
+    multivar_mine.R -i "miRNA.txt,variants.txt,severity.txt,severity_scales.txt,phenotypes.txt,genes.txt,metabolomics.txt" \
+    -A "miRNA.txt:s,genes.txt:s,phenotypes.txt:n,metabolomics.txt:s" -S "variants.txt:n,severity.txt:n,severity_scales.txt:c" \
+    -c -n 2 -o ./results --seed 123
+}
+
+mfa_code_no_metab){
+    source ~/dev_R/ExpHunterSuite/init_degenes_hunter
+    ln -s $datasets/sample_cohort/* .
+    mkdir -p results
+    ?
+    multivar_mine.R -i "miRNA.txt,variants.txt,severity.txt,severity_scales.txt,phenotypes.txt,genes.txt" \
+    -A "miRNA.txt:s,genes.txt:s,phenotypes.txt:n" -S "variants.txt:n,severity.txt:n,severity_scales.txt:c" \
+    -c -n 2 -o ./results --seed 123
+}
+
+mfa_name_with_metab){
+    source ~/dev_R/ExpHunterSuite/init_degenes_hunter
+    ln -s $datasets/sample_cohort/* .
+    mkdir -p results
+    ?
+    multivar_mine.R -i "miRNA_n.txt,variants.txt,severity.txt,severity_scales.txt,phenotypes_n.txt,genes_n.txt,metabolomics.txt" \
+    -A "miRNA_n.txt:s,genes_n.txt:s,phenotypes_n.txt:n,metabolomics.txt:s" -S "variants.txt:n,severity.txt:n,severity_scales.txt:c" \ 
+    -c -n 2 -o ./results --seed 123
+}
+
+mfa_name_no_metab){
+    source ~/dev_R/ExpHunterSuite/init_degenes_hunter
+    ln -s $datasets/sample_cohort/* .
+    mkdir -p results
+    ?
+    multivar_mine.R -i "miRNA_n.txt,variants.txt,severity.txt,severity_scales.txt,phenotypes_n.txt,genes_n.txt" \
+     -A "miRNA_n.txt:s,genes_n.txt:s,phenotypes_n.txt:n" -S "variants.txt:n,severity.txt:n,severity_scales.txt:c" \
+     -c -n 2 -o ./results --seed 123
+}
+
+collect_results){
+    if [ -d result_tables ] ; then
+        rm  result_tables
+    fi
+    ln -s mfa_code_no_metab)/results/PCA_results result_tables
+    ?  
+    cp mfa_code_with_metab)/results/PCA_report.html mfa_code_with_metab.html
+    cp mfa_code_no_metab)/results/PCA_report.html mfa_code_no_metab.html
+    cp mfa_name_with_metab)/results/PCA_report.html mfa_name_with_metab.html
+    cp mfa_name_no_metab)/results/PCA_report.html mfa_name_no_metab.html
+}
