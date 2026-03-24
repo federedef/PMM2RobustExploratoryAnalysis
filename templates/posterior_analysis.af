@@ -1,16 +1,16 @@
-boxplot_generation){
+%boxplot_generation){
     source ~soft_bio_267/initializes/init_python
     source ~/projects/PMM2REA/venv/bin/activate
-    head -n 1 $datasets/genes_n.txt | tr -s "\t" "\n" > head_genes
-    tail -n +2 $datasets/genes_n.txt | sort > table_genes
-    head -n 1 $datasets/miRNA_n.txt | tr -s "\t" "\n" > head_mirnas
-    tail -n +2 $datasets/miRNA_n.txt | sort > table_mirnas
+    head -n 1 $datasets/sample_cohort/genes_n.txt | tr -s "\t" "\n" > head_genes
+    tail -n +2 $datasets/sample_cohort/genes_n.txt | sort > table_genes
+    head -n 1 $datasets/sample_cohort/miRNA_n.txt | tr -s "\t" "\n" > head_mirnas
+    tail -n +2 $datasets/sample_cohort/miRNA_n.txt | sort > table_mirnas
     join -1 1 -2 1 table_genes table_mirnas | tr -s " " "\t" > table_genes_mirna_n.txt
     cat head_genes head_mirnas | tr -s "\n" "\t" > head_genes_mirna_n.txt
     cat head_genes_mirna_n.txt table_genes_mirna_n.txt > table_mfa_n.txt
     ?
-    report_boxplot.py --patients2genes $datasets/genes_n.txt --genes $results_from_ma/genes_n.txt --output gene
-    report_boxplot.py --patients2genes $datasets/miRNA_n.txt --genes $results_from_ma/mirna_n.txt --output mirna
+    report_boxplot.py --patients2genes $datasets/sample_cohort/genes_n.txt --genes $results_from_ma/genes_n.txt --output gene
+    report_boxplot.py --patients2genes $datasets/sample_cohort/miRNA_n.txt --genes $results_from_ma/mirna_n.txt --output mirna
     report_boxplot.py --patients2genes table_mfa_n.txt --genes $results_from_ma/mfa_n.txt --output mfa
 }
 
@@ -24,3 +24,45 @@ boxplot_generation){
     clusters_to_enrichment.R -i mfa_top_groups.txt  -w 5 -o mfa_functional_results -f MF,BP,CC,KEGG,Reactome -P 0.05 -k ENSEMBL -O "Human"
 }
 
+net_analysis){
+    source ~soft_bio_267/initializes/init_degenes_hunter
+    source ~/dev_py/venvs/net_env/bin/activate
+    #source ~soft_bio_267/initializes/init_python
+    #source ~/dev_py/venvs/exp_env2/bin/activate
+    # combined channel
+    head -n 1 $datasets/sample_cohort/genes.txt | tr -s "\t" "\n" > genes
+    text2binary_matrix -i $datasets/ppi_string_ensembl.txt -t pair -O pair -o filtered_net --filter_by_nodes genes
+    cut -f 1 $results_from_ma/mfa_dim_metrics.txt | grep "ENSG" > significant_genes
+    ?
+    netanalyzer -i filtered_net -f pair -k "node2vec" -K embedding_coords \ 
+		--both_repre_formats -l 'genes' -u 'genes' --embedding_add_options "'window':10,'num_walks':10,'walk_length':100,'dimensions':128" --embedding_coords \ 
+		--cluster_embedding "HDBSCAN" -r significant_genes \
+        --cluster_embedding_add_options "'min_cluster_size': 10,'min_samples': 5,'metric':'cosine','cluster_selection_method':'leaf'" \ 
+		--output_build_clusters "groups_from_embedding" --seed 123456
+}
+
+cluster_enrichment_ontology){
+    source ~soft_bio_267/initializes/init_degenes_hunter
+    source ~soft_bio_267/initializes/init_python
+    cmdtabs -i net_analysis)/groups_from_embedding \
+    --aggregate \
+    --agg_col 0 \
+    --agg_ref_col_index 1 > groups_from_embedding_agg.txt
+    ?
+    clusters_to_enrichment.R -i groups_from_embedding_agg.txt -w 5 -o enrichment_results -f MF,BP,CC,KEGG,Reactome -P 0.05 -k ENSEMBL -O "Human"
+}
+
+cluster_enrichment_condition){
+    source ~/dev_py/venvs/exp_env2/bin/activate
+    sed '1s/^/\t/' $datasets/sample_cohort/all_genes_var_filtered.txt > external_data
+    cmdtabs -i external_data --transposed | tail -n +2 > tmp && mv tmp external_data
+    echo -e " \tH\tH\tH\tH\tH\tL\tL\tL\tL\tL" > header
+    cat header external_data > tmp && mv tmp external_data
+    ?
+    cluster_analyzer -i net_analysis)/groups_from_embedding \
+    -o cluster_analysis --coords net_analysis)/embedding_coords.npy \
+    --sample_ids net_analysis)/embedding_coords_rowIds.lst \
+    --metrics "silhouette,calinski_harabasz,davies_bouldin" \
+    --external_meta external_data \
+    --random_seed 123456 
+}

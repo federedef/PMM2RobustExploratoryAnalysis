@@ -7,6 +7,7 @@ export TEMPLATES_PATH=$CURRENT_PATH/templates
 export PATH=$CODE_PATH:$PATH
 datasets_folder=$CURRENT_PATH/datasets/datasets
 input_folder=$CURRENT_PATH/parsed_datasets
+string_cutoff=700
 seed=123
 
 if [ $1 == "set_env" ] ; then
@@ -17,6 +18,22 @@ if [ $1 == "set_env" ] ; then
         echo -e "environment was set up, please run parse option now"
         exit 0
     fi
+fi
+
+if [ $1 == "get_string" ] ; then 
+    source ~soft_bio_267/initializes/init_python
+    wget https://stringdb-downloads.org/download/protein.links.v12.0/9606.protein.links.v12.0.txt.gz -O $input_folder/ppi_string.gz
+    gzip -d $input_folder/ppi_string.gz
+    tr -s " " "\t" < $input_folder/ppi_string | tail -n +2 \
+    | awk -v cutoff=$string_cutoff 'BEGIN{FS=OFS="\t"}{if ($3 >= cutoff) print $1,$2}' > tmp && mv tmp $input_folder/ppi_string.txt
+    wget https://stringdb-downloads.org/download/protein.aliases.v12.0/9606.protein.aliases.v12.0.txt.gz -O $input_folder/9606.protein.aliases.v12.0.txt.gz
+    gzip -d $input_folder/9606.protein.aliases.v12.0.txt.gz
+    grep "Ensembl_gene" $input_folder/9606.protein.aliases.v12.0.txt | cut -f 1,2 > $input_folder/string_ensembl.txt
+    rm $input_folder/9606.protein.aliases.v12.0.txt
+    cmdtabs -i $input_folder/ppi_string.txt -I $input_folder/string_ensembl.txt -c 1,2 --from 1 --to 2 > $input_folder/ppi_string_ensembl.txt
+    rm $input_folder/ppi_string.txt
+    rm $input_folder/ppi_string
+    rm $input_folder/string_ensembl.txt
 fi
 
 if [ $1 == "parse" ] ; then
@@ -90,7 +107,7 @@ fi
 
 if [ $1 == "ma" ] ; then
 	#source ~soft_bio_267/initializes/init_autoflow
-	source ~/dev_py/pytoflow/bin/activate
+	source ~soft_bio_267/initializes/init_python
     path_to_autoflow_exec=$EXEC_PATH/multifactor_analysis
     mkdir -p $path_to_autoflow_exec
 	variables=`echo -e "
@@ -102,7 +119,7 @@ fi
 
 if [ $1 == "pa" ] ; then
 	#source ~soft_bio_267/initializes/init_autoflow
-	source ~/dev_py/pytoflow/bin/activate
+	source ~soft_bio_267/initializes/init_python
     path_to_autoflow_exec=$EXEC_PATH/posterior_analysis
     results_from_ma=$CURRENT_PATH/PCA_top_results #`grep -w "collect_results" $EXEC_PATH/multifactor_analysis/index_execution | cut -f 2`
     mkdir -p $path_to_autoflow_exec
@@ -115,12 +132,13 @@ if [ $1 == "pa" ] ; then
 fi
 
 if [ "$1" == "check" ] ; then
-  	source ~/dev_py/pytoflow/bin/activate
+  	source ~soft_bio_267/initializes/init_python
     path_to_autoflow_exec=$EXEC_PATH/multifactor_analysis
 	flow_logger -w -e $path_to_autoflow_exec -r all
 fi
 
-if [ "$1" == "recover" ] ; then 
+if [ "$1" == "recover" ] ; then
+    source ~soft_bio_267/initializes/init_python
     path_to_autoflow_exec=$EXEC_PATH/multifactor_analysis
 	flow_logger -w -e $path_to_autoflow_exec --sleep 0.1 -l -p 
 fi
