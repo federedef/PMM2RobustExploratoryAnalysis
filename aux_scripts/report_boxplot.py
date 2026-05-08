@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
 import argparse
-from py_report_html import Py_report_html
+#from py_report_html.py_report_html import Py_report_html 
+from py_report_html.py_report_html import Py_report_html
+#import Py_report_html
 from pathlib import Path
 
 def open_table(file):

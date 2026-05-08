@@ -24,45 +24,123 @@
     clusters_to_enrichment.R -i mfa_top_groups.txt  -w 5 -o mfa_functional_results -f MF,BP,CC,KEGG,Reactome -P 0.05 -k ENSEMBL -O "Human"
 }
 
-net_analysis){
+net_analysis_[1;2]){
     source ~soft_bio_267/initializes/init_degenes_hunter
-    source ~/dev_py/venvs/net_env/bin/activate
-    #source ~soft_bio_267/initializes/init_python
-    #source ~/dev_py/venvs/exp_env2/bin/activate
+    source ~soft_bio_267/initializes/init_python
     # combined channel
-    head -n 1 $datasets/sample_cohort/genes.txt | tr -s "\t" "\n" > genes
-    text2binary_matrix -i $datasets/ppi_string_ensembl.txt -t pair -O pair -o filtered_net --filter_by_nodes genes
-    cut -f 1 $results_from_ma/mfa_dim_metrics.txt | grep "ENSG" > significant_genes
+    head -n 1 $datasets/sample_cohort/all_genes_var_filtered_n.txt | tr -s "\t" "\n" > genes
+    text2binary_matrix -i $datasets/ppi_string_hgnc.txt -t pair -O pair -o filtered_net --filter_by_nodes genes
+    grep "Dim.(*)" $results_from_ma/mfa_n_dim_metrics.txt \
+    | awk -v cutoff=$correlation_cutoff 'BEGIN{FS=OFS="\t"}{if (sqrt($5^2) >= cutoff) print $1}' > significant_genes
     ?
     netanalyzer -i filtered_net -f pair -k "node2vec" -K embedding_coords \ 
 		--both_repre_formats -l 'genes' -u 'genes' --embedding_add_options "'window':10,'num_walks':10,'walk_length':100,'dimensions':128" --embedding_coords \ 
 		--cluster_embedding "HDBSCAN" -r significant_genes \
-        --cluster_embedding_add_options "'min_cluster_size': 10,'min_samples': 5,'metric':'cosine','cluster_selection_method':'leaf'" \ 
+        --cluster_embedding_add_options "'min_cluster_size': 5,'min_samples': 5,'metric':'cosine','cluster_selection_method':'leaf'" \ 
 		--output_build_clusters "groups_from_embedding" --seed 123456
 }
 
-cluster_enrichment_ontology){
+miRNA_to_gene_[1;2]){
+    source ~aestebanm/software/inits/init_Hunter_dev
+    grep "Dim.(*)" $results_from_ma/mfa_dim_metrics.txt \
+    | awk -v cutoff=$correlation_cutoff 'BEGIN{FS=OFS="\t"}{if (sqrt($5^2) >= cutoff) print $1}' | grep "MIMAT" > significant_miRNA
+    grep "Dim.(*)" $results_from_ma/mfa_dim_metrics.txt \
+    | awk -v cutoff=$correlation_cutoff 'BEGIN{FS=OFS="\t"}{if (sqrt($5^2) >= cutoff) print $1}' | grep "ENSG" > genes
+    #head -n 1 $datasets/sample_cohort/all_genes_var_filtered.txt | tr -s "\t" "\n" > genes
+    #add_annotation.R -i !net_analysis_*!/genes -o genes -c 1 -I SYMBOL -K ENSEMBL
+    ?
+    get_multimirdb_columns.R -i ~josecordoba/proyectos/multimir_db/p_hsa/parsed_raw_score_hsa.RData -o gene_to_miRNA -d "$database_mirna" -c rm
+    awk 'BEGIN{FS=OFS="\t"}{if ($1 != "NA" && $1 >= 0.2) print $2,$3}' gene_to_miRNA > tmp && mv tmp gene_to_miRNA
+    tail -n +2 gene_to_miRNA > tmp && mv tmp gene_to_miRNA
+    grep -Ff significant_miRNA gene_to_miRNA > significant_miRNA_list
+    grep -Ff genes significant_miRNA_list > genes_miRNA
+}
+
+
+cluster_to_miRNA_[1;2]){
+    source ~aestebanm/software/inits/init_Hunter_dev
+    source ~soft_bio_267/initializes/init_python
+    awk 'BEGIN{FS=OFS="\t"}{print "Gene:"$1,"miRNA:"$2}' !miRNA_to_gene_*!/genes_miRNA > gene_miRNA_pairs.txt
+    sed '1s/^/Cluster\tSYMBOL\n/' !net_analysis_*!/groups_from_embedding > tmp 
+    add_annotation.R -i tmp -o groups_from_embedding -c 2 -I SYMBOL -K ENSEMBL
+    awk 'BEGIN{FS=OFS="\t"}{print "Cluster:"$1,"Gene:"$3}' groups_from_embedding > cluster_gene_pairs.txt
+    cat gene_miRNA_pairs.txt cluster_gene_pairs.txt > cluster_gene_miRNA
+    # 
+    ?
+    netanalyzer -i cluster_gene_miRNA -f pair -l "cluster,Cluster:;gene,Gene:;miRNA,miRNA:" \
+    -m "hypergeometric_bh" -u "cluster,miRNA;gene" -a cluster_to_mirna --no_autorelations 
+}
+
+which_miRNA_is_diff[1;2]){
+    source ~soft_bio_267/initializes/init_python
+    source ~aestebanm/software/inits/init_Hunter_dev
+    source ~/projects/PMM2REA/venv/bin/activate
+    sed "s/miRNA://" !cluster_to_miRNA_*!/cluster_to_mirna > cluster_to_mirna_n.txt
+    echo -e "Cluster\tMIMAT\n" > header
+    cat header cluster_to_mirna_n.txt > tmp && mv tmp cluster_to_mirna_n.txt
+    add_annotation.R -i cluster_to_mirna_n.txt -o cluster_to_mirna_annotation -c 2 -m -I MIMAT -K "VW-MIMAT-22.0"
+    cut -f 3 cluster_to_miRNA_annotation | grep "hsa" > mirnas_of_interest
+    head -n 1 $results_from_ma/mfa_n.txt > header
+    grep -Ff mirnas_of_interest $results_from_ma/mfa_n.txt > significant_mfa.txt
+    cat header significant_mfa.txt > significant_mfa_n.txt
+    ?
+    report_boxplot.py --patients2genes $datasets/sample_cohort/miRNA_n.txt --genes significant_mfa_n.txt --output mirna
+}
+
+generate_net_representation){
+    source ~soft_bio_267/initializes/init_python
+    source ~soft_bio_267/initializes/init_degenes_hunter
+    head -n 1 $datasets/sample_cohort/all_genes_var_filtered_n.txt | tr -s "\t" "\n" > genes
+    text2binary_matrix -i $datasets/ppi_string_hgnc.txt -t pair -O pair -o filtered_net --filter_by_nodes genes
+    # collect genes from dim1
+    grep "Dim.1" $results_from_ma/mfa_dim_metrics.txt \
+        | awk -v cutoff=$correlation_cutoff 'BEGIN{FS=OFS="\t"}{if (sqrt($5^2) >= cutoff) print $1}' | grep "ENSG" > genes_dim1
+    add_annotation.R -i genes_dim1 -o tmp -c 1 -I ENSEMBL -K SYMBOL 
+    cut -f 2 tmp | sed 's/^/Dim.1:\t/' > genes_dim1 
+    # Collect genes from dim 2
+    grep "Dim.2" $results_from_ma/mfa_dim_metrics.txt \
+        | awk -v cutoff=$correlation_cutoff 'BEGIN{FS=OFS="\t"}{if (sqrt($5^2) >= cutoff) print $1}' | grep "ENSG" > genes_dim2
+    add_annotation.R -i genes_dim2 -o tmp -c 1 -I ENSEMBL -K SYMBOL
+    cut -f 2 tmp | sed  's/^/Dim.2:\t/' > genes_dim2 
+    # Collect the rest of genes
+    cat genes_dim1 genes_dim2 | sort | uniq -c | grep  " 2 " | cut -f 2 -d "2 " | sed 's/^/Both:\t/' > genes_dim1_dim2
+    cat genes_dim1 genes_dim2 genes_dim1_dim2 > gene_dim1_dim2_genes.txt
+    # See intersection and add to the rest of genes.
+    ?
+    # Represent network with 
+    netanalyzer -i filtered_net -G gene_dim1_dim2_genes.txt -f pair \
+    --graph_options 'method=sigma4,width=1200px,height=900px,iterations=500,style=safe' \
+    -g dims_in_string
+}
+
+cluster_enrichment_ontology_[1;2]){
     source ~soft_bio_267/initializes/init_degenes_hunter
     source ~soft_bio_267/initializes/init_python
-    cmdtabs -i net_analysis)/groups_from_embedding \
+    cmdtabs -i !net_analysis_*!/groups_from_embedding \
     --aggregate \
     --agg_col 0 \
     --agg_ref_col_index 1 > groups_from_embedding_agg.txt
     ?
-    clusters_to_enrichment.R -i groups_from_embedding_agg.txt -w 5 -o enrichment_results -f MF,BP,CC,KEGG,Reactome -P 0.05 -k ENSEMBL -O "Human"
+    clusters_to_enrichment.R -i groups_from_embedding_agg.txt -w 1 -o enrichment_results \
+    -f MF,BP,CC,KEGG,Reactome -P 0.05 -k SYMBOL -O "Human" --clean_parentals
 }
 
-cluster_enrichment_condition){
-    source ~/dev_py/venvs/exp_env2/bin/activate
-    sed '1s/^/\t/' $datasets/sample_cohort/all_genes_var_filtered.txt > external_data
+cluster_enrichment_condition_[1;2]){ 
+    source ~soft_bio_267/initializes/init_python
+    source ~/dev_py/venvs/expcalc_env/bin/activate
+    sed '1s/^/\t/' $datasets/sample_cohort/genes_n.txt > external_data
     cmdtabs -i external_data --transposed | tail -n +2 > tmp && mv tmp external_data
     echo -e " \tH\tH\tH\tH\tH\tL\tL\tL\tL\tL" > header
     cat header external_data > tmp && mv tmp external_data
     ?
-    cluster_analyzer -i net_analysis)/groups_from_embedding \
-    -o cluster_analysis --coords net_analysis)/embedding_coords.npy \
-    --sample_ids net_analysis)/embedding_coords_rowIds.lst \
+    cluster_analyzer -i !net_analysis_*!/groups_from_embedding \
+    -o cluster_analysis --coords !net_analysis_*!/embedding_coords.npy \
+    --sample_ids !net_analysis_*!/embedding_coords_rowIds.lst \
     --metrics "silhouette,calinski_harabasz,davies_bouldin" \
     --external_meta external_data \
-    --random_seed 123456 
+    --random_seed 123456 \
+    --report \
+    --embedding_proj UMAP
 }
+
+
