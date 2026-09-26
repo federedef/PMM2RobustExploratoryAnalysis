@@ -1,0 +1,48 @@
+
+generate_iter_emb_clust_[1-11]){
+    source ~soft_bio_267/initializes/init_python
+    source ~/dev_py/venvs/net_env/bin/activate
+    base_seed=$(((*)+123456))
+    ?
+    iternetanalyzer \
+        -i $path_to_emb_clust_ref/filtered_net \
+        -f pair \
+        -k "node2vec" \
+        --both_repre_formats \
+        -l 'genes' \
+        -u 'genes' \
+        --embedding_add_options "'window':10,'num_walks':10,'walk_length':100,'dimensions':128" \
+        --cluster_embedding "HDBSCAN" \
+        -r $path_to_emb_clust_ref/significant_genes \
+        --cluster_embedding_add_options "'min_cluster_size':5,'min_samples':5,'metric':'cosine','cluster_selection_method':'leaf'" \
+        -I 10 \
+        --base_seed $base_seed \
+        --output_prefix "groups_from_embedding"
+}
+
+obtain_cluster_stability){
+    source ~soft_bio_267/initializes/init_python
+    source ~/dev_py/venvs/net_env/bin/activate
+    # Accumulate every cluster file
+    if [ -e paths2clusters ] ; then
+        rm paths2clusters
+    fi 
+    for path in !generate_iter_emb_clust_!/ ; do
+        for file in "$path"/groups_from_embedding_iter_*; do
+            printf '%s\n' "$file" >> paths2clusters
+        done
+    done
+    path2clusters=`cat paths2clusters | tr -s "\n" "," | sed -r 's/,+$//g'`
+    ?
+    iternetanalyzer \
+        -i $path_to_emb_clust_ref/filtered_net \
+        -f pair \
+        -l 'genes' \
+        -u 'genes' \
+        -I 100 \
+        --base_seed 1 \
+        --output_prefix "groups_from_embedding" \
+        --pool_clusters $path2clusters \
+        --ref_clusters $path_to_emb_clust_ref/groups_from_embedding \
+        --compare_clusters
+}

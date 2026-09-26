@@ -1,0 +1,101 @@
+%parse_datasets_[1-11]){
+    export PATH=$aux_scripts:$PATH
+    # Apply just in genes
+    cut -f 1 $datasets/sample_cohort/all_genes_var_filtered.txt | tail -n +2 > all_samples.txt
+    sed -i '(*)d' all_samples.txt
+    cut -f2 -d "_" all_samples.txt > label_genes.txt
+    head -n 1 $datasets/sample_cohort/all_genes_var_filtered.txt > all_genes_var_filtered.txt
+    grep -F -f all_samples.txt $datasets/sample_cohort/all_genes_var_filtered.txt >> all_genes_var_filtered.txt
+    ?
+    stable_select -i ./all_genes_var_filtered.txt --label ./label_genes.txt -o ./genes.txt
+    sed -i "s/^\t//" ./genes.txt
+
+    head -n 1 $datasets/sample_cohort/miRNA.txt > miRNA.txt
+    # head -n 1 $datasets/sample_cohort/metabolomics.txt > metabolomics.txt
+    head -n 1 $datasets/sample_cohort/phenotypes.txt > phenotypes.txt
+    head -n 1 $datasets/sample_cohort/severity.txt > severity.txt
+    head -n 1 $datasets/sample_cohort/severity_scales.txt > severity_scales.txt
+    head -n 1 $datasets/sample_cohort/variants.txt > variants.txt
+
+    grep -F -f all_samples.txt $datasets/sample_cohort/miRNA.txt >> miRNA.txt
+    # grep -F -f all_samples.txt $datasets/sample_cohort/metabolomics.txt >> metabolomics.txt
+    grep -F -f all_samples.txt $datasets/sample_cohort/phenotypes.txt >> phenotypes.txt
+    grep -F -f all_samples.txt $datasets/sample_cohort/severity.txt >> severity.txt
+    grep -F -f all_samples.txt $datasets/sample_cohort/severity_scales.txt >> severity_scales.txt
+    grep -F -f all_samples.txt $datasets/sample_cohort/variants.txt >> variants.txt
+
+    # removing phenotypes which are not in the subset of samples
+    cmdtabs --transposed -i phenotypes.txt | grep -v "yes" | tail -n +2 | cut -f 1 > phen_no
+    cmdtabs --transposed -i phenotypes.txt | grep -v "no" | tail -n +2 | cut -f 1 > phen_yes
+    cmdtabs --transposed -i phenotypes.txt | grep -Fv -f phen_no | grep -Fv -f phen_yes | cmdtabs --transposed -i - > tmp && mv tmp phenotypes.txt
+
+    # selected genes
+    head -n 1 genes.txt | tr "\t" "\n" > gene_list.txt
+
+}
+
+%get_robust_metric_selected_genes){
+    source ~soft_bio_267/initializes/init_python
+    export PATH=$aux_scripts:$PATH
+    # Given on reference list, obtain the corresponding metrics for the selected genes in the reference list.
+    head -n 1 $datasets/sample_cohort/genes.txt | tr "\t" "\n" > gene_list.txt
+    paths_to_genelist=`echo -e !parse_datasets_!/gene_list.txt | tr -s " " ","`
+    ?
+    get_robust_metrics_list.py --input_list $paths_to_genelist --input_reference gene_list.txt > metrics_selected_genes.txt
+    # TODO FGC: Create the script. Output: the median of the overlap of genes between the reference list and the selected genes in the different LOO analyses.
+}
+
+%mfa_by_loo_[1-11]){
+    source ~/initializes/init_Hunter_dev
+    ln -s !parse_datasets_*!/* .
+    mkdir -p results
+    ?
+    multivar_mine.R -i "miRNA.txt,variants.txt,severity.txt,severity_scales.txt,phenotypes.txt,genes.txt" \
+    -A "miRNA.txt:s,genes.txt:s,phenotypes.txt:n" -S "variants.txt:n,severity.txt:n,severity_scales.txt:c" \ 
+    -c -n 2 -o ./results --seed 123
+    if [ -e significant_genes ] ; then
+        rm significant_genes
+    fi
+    dims=`cut -f 4 ./results/PCA_results/mfa_dim_metrics.txt | sort | uniq | grep -v "dimension" |tr -s "\n" " " | sed -r 's/\s+$//g'`
+    for dim in $dims ; do
+        grep "$dim" ./results/PCA_results/mfa_dim_metrics.txt \
+        | awk -v cutoff=$correlation_cutoff 'BEGIN{FS=OFS="\t"}{if (sqrt($5^2) >= cutoff) print $1}' | grep "ENS" >> significant_genes_$dim
+    done
+}
+
+%dim_assocciation_to_ref){
+    # Here I want to obtain the asscoation between each PC to the original reference PC.
+    source ~soft_bio_267/initializes/init_python
+    export PATH=$aux_scripts:$PATH
+    paths_to_pc=`echo -e !mfa_by_loo_!/results/PCA_results/mfa_eigenvectors.txt | tr -s " " ","`
+    ?
+    get_dim_association.py --input_reference $path_to_mfa_results/results/PCA_results/mfa_eigenvectors.txt \
+    --input_list $paths_to_pc --output pc_assoc --correlation_output corr_table
+    cut -f 2,3 pc_assoc | tail -n +3 > dim2dim
+}
+
+get_robust_metric_top_genes_[1;2]){
+    source ~soft_bio_267/initializes/init_python
+    export PATH=$aux_scripts:$PATH
+    # combined channel
+    grep "Dim.(*)" $path_to_mfa_results/results/PCA_results/mfa_dim_metrics.txt \
+    | awk -v cutoff=$correlation_cutoff 'BEGIN{FS=OFS="\t"}{if (sqrt($5^2) >= cutoff) print $1}' | grep "ENS" > significant_genes_ref
+    echo !mfa_by_loo_!/significant_genes_Dim.(*) | tr -s " " "\n" > datasets.txt
+    path_to_genelist=`cat datasets.txt | tr -s "\n" "," | sed -r 's/,+$//g'`
+    #cut -f (*) dim_assocciation_to_ref)/dim2dim > assoc_dim.txt
+    # paste datasets.txt assoc_dim.txt | tr -d "\t" > datasets_assoc_dim.txt
+    #path_to_genelist=`cat datasets_assoc_dim.txt | tr -s "\n" "," | sed -r 's/,+$//g'`
+    ?
+    get_robust_metrics_list.py --input_list $path_to_genelist --input_reference significant_genes_ref > metrics_top_genes.txt
+    # TODO FGC: Create the script. Output: the median of the overlap of genes between the reference list and the selected genes in the different LOO analyses.
+    # Generate association between each dimension and the referene.
+
+    # netanalyzer -i filtered_net -f pair -k "node2vec" -K embedding_coords \ 
+	# 	--both_repre_formats -l 'genes' -u 'genes' --embedding_add_options "'window':10,'num_walks':10,'walk_length':100,'dimensions':128" --embedding_coords \ 
+	# 	--cluster_embedding "HDBSCAN" -r significant_genes \
+    #     --cluster_embedding_add_options "'min_cluster_size': 5,'min_samples': 5,'metric':'cosine','cluster_selection_method':'leaf'" \ 
+	# 	--output_build_clusters "groups_from_embedding" --seed 123456
+}
+
+
+

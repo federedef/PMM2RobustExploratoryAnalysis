@@ -69,12 +69,12 @@ if [ $1 == "parse" ] ; then
     parsed_path=$input_folder/sample_cohort
     # mkdir -p $parsed_path
 
-    # # Phenotypes
-    # echo -e "Parsing phenotypes:\n"
-    # ln -s $data_path/phenotypes.txt $parsed_path/phenotypes.txt
-    # head -n 1 $parsed_path/phenotypes.txt | tr "\t" "\n"|semtools -i - -O HPO --list_translate names \
-    #  | cut -f 2 | tr "\n" "\t" | sed -r 's/\t$/\n/g' > $parsed_path/phenotypes_n.txt
-    #  tail -n +2 $parsed_path/phenotypes.txt >> $parsed_path/phenotypes_n.txt
+    # Phenotypes
+    echo -e "Parsing phenotypes:\n"
+    ln -s $data_path/phenotypes.txt $parsed_path/phenotypes.txt
+    head -n 1 $parsed_path/phenotypes.txt | tr "\t" "\n"|semtools -i - -O HPO --list_translate names \
+     | cut -f 2 | tr "\n" "\t" | sed -r 's/\t$/\n/g' > $parsed_path/phenotypes_n.txt
+     tail -n +2 $parsed_path/phenotypes.txt >> $parsed_path/phenotypes_n.txt
 
     # Genes
     echo -e "Parsing genes:\n"
@@ -88,20 +88,20 @@ if [ $1 == "parse" ] ; then
     rm $parsed_path/all_genes_var_filtered_list.txt
     rm $parsed_path/all_genes_var_filtered_tr.txt
     # Gene selection
-    # ln -s $data_path/label_genes.txt $parsed_path/label_genes.txt
-    # echo -e "The number of total genes are:"
-    # number_of_total_genes=`head -n 1 $parsed_path/all_genes_var_filtered.txt | tr -s "\t" "\n" | wc -l`
-    # echo -e "$number_of_total_genes"
-    # stable_select -i $parsed_path/all_genes_var_filtered.txt --label $parsed_path/label_genes.txt -o $parsed_path/genes.txt
-    # number_of_selected_genes=`head -n 1 $parsed_path/genes.txt | tr -s "\t" "\n" | wc -l`
-    # echo -e "The number of selected genes are: $number_of_selected_genes"
-    # sed -i "s/^\t//" $parsed_path/genes.txt
-    # head -n 1 $parsed_path/genes.txt | tr "\t" "\n" > $parsed_path/gene_list.txt
-    # sed -i '1s/^/ENSEMBL\n/' $parsed_path/gene_list.txt
-    # add_annotation.R -i $parsed_path/gene_list.txt -o $parsed_path/genes_tr.txt -c 1 -I ENSEMBL -K SYMBOL
-    # tail -n +2 $parsed_path/genes_tr.txt | awk '{if ($2 == "NA") print $1; else print $2 }'  \
-    # | tr "\n" "\t"| sed -r 's/\t$/\n/g' > $parsed_path/genes_n.txt
-    # tail -n +2 $parsed_path/genes.txt >> $parsed_path/genes_n.txt
+    ln -s $data_path/label_genes.txt $parsed_path/label_genes.txt
+    echo -e "The number of total genes are:"
+    number_of_total_genes=`head -n 1 $parsed_path/all_genes_var_filtered.txt | tr -s "\t" "\n" | wc -l`
+    echo -e "$number_of_total_genes"
+    stable_select -i $parsed_path/all_genes_var_filtered.txt --label $parsed_path/label_genes.txt -o $parsed_path/genes.txt
+    number_of_selected_genes=`head -n 1 $parsed_path/genes.txt | tr -s "\t" "\n" | wc -l`
+    echo -e "The number of selected genes are: $number_of_selected_genes"
+    sed -i "s/^\t//" $parsed_path/genes.txt
+    head -n 1 $parsed_path/genes.txt | tr "\t" "\n" > $parsed_path/gene_list.txt
+    sed -i '1s/^/ENSEMBL\n/' $parsed_path/gene_list.txt
+    add_annotation.R -i $parsed_path/gene_list.txt -o $parsed_path/genes_tr.txt -c 1 -I ENSEMBL -K SYMBOL
+    tail -n +2 $parsed_path/genes_tr.txt | awk '{if ($2 == "NA") print $1; else print $2 }'  \
+    | tr "\n" "\t"| sed -r 's/\t$/\n/g' > $parsed_path/genes_n.txt
+    tail -n +2 $parsed_path/genes.txt >> $parsed_path/genes_n.txt
 
     # miRNA
     echo -e "Parsing miRNAs:\n"
@@ -113,13 +113,13 @@ if [ $1 == "parse" ] ; then
     | tr "\n" "\t"| sed -r 's/\t$/\n/g' > $parsed_path/miRNA_n.txt
     tail -n +2 $parsed_path/miRNA.txt >> $parsed_path/miRNA_n.txt
 
-    # # metabolomics
-    # ln -s $data_path/metabolomics.txt $parsed_path/metabolomics.txt
+    # metabolomics
+    ln -s $data_path/metabolomics.txt $parsed_path/metabolomics.txt
 
-    # # Supp
-    # for file in severity_scales.txt severity.txt variants.txt ; do 
-    #     ln -s $data_path/$file $parsed_path/$file
-    # done
+    # Supp
+    for file in severity_scales.txt severity.txt variants.txt ; do 
+        ln -s $data_path/$file $parsed_path/$file
+    done
 fi
 
 if [ $1 == "ma" ] ; then
@@ -133,6 +133,40 @@ if [ $1 == "ma" ] ; then
 	" | tr -d [:space:]`
 	AutoFlow -e -w $TEMPLATES_PATH/multifactor_analysis.af -V $variables -o $path_to_autoflow_exec -c 1 -m 60gb -t 0-02:30:00 -n cal $2
 fi
+
+if [ $1 == "select_layers" ] ; then
+    source ~soft_bio_267/initializes/init_python
+    source ~/dev_py/venvs/pytoflow_env/bin/activate
+    path_to_autoflow_exec=$EXEC_PATH/select_layers
+    mkdir -p $path_to_autoflow_exec
+    variables=`echo -e "
+        \\$datasets=$input_folder,
+        \\$seed=$seed,
+        \\$aux_scripts=$CODE_PATH
+    " | tr -d [:space:]`
+    AutoFlow -e -w $TEMPLATES_PATH/select_layers.af -V $variables -o $path_to_autoflow_exec \
+     -c 1 -m 60gb -t 0-02:30:00 -n cal $2
+fi
+
+if [ $1 == "check_outlier_robustness" ] ; then
+# Objetivo: Sacar los tops del mfa tras haber hecho las loo correspondinetes y vemos también la estabilidad de clustering.
+    source ~soft_bio_267/initializes/init_python
+    source ~/dev_py/venvs/pytoflow_env/bin/activate
+    path_to_autoflow_exec=$EXEC_PATH/check_outlier_robustness
+    path_to_mfa_results=`grep mfa_code_no_metab $EXEC_PATH/multifactor_analysis/index_execution | cut -f 2`
+    mkdir -p $path_to_autoflow_exec
+    variables=`echo -e "
+        \\$datasets=$input_folder,
+        \\$seed=$seed,
+        \\$aux_scripts=$CODE_PATH,
+        \\$path_to_mfa_results=$path_to_mfa_results,
+        \\$correlation_cutoff=0.70
+    " | tr -d [:space:]`
+    # Lo teniamos en 0.70
+    AutoFlow -e -w $TEMPLATES_PATH/check_outlier_robustness.af -V $variables -o $path_to_autoflow_exec \
+     -c 1 -m 60gb -t 0-02:30:00 -n cal $2
+fi
+
 
 if [ $1 == "pa" ] ; then
 	#source ~soft_bio_267/initializes/init_autoflow
@@ -148,6 +182,20 @@ if [ $1 == "pa" ] ; then
         \\$database_mirna=mirecords
 	" | tr -d [:space:]`
 	AutoFlow -e -w $TEMPLATES_PATH/posterior_analysis.af -V $variables -o $path_to_autoflow_exec -c 1 -m 20gb -t 0-02:00:00 -n cal $2
+fi
+
+if [ $1 == "check_embedding_stability" ] ; then
+	source ~soft_bio_267/initializes/init_python
+    path_to_autoflow_exec=$EXEC_PATH/check_embedding_stability
+    for i in 1 2 ; do
+        path_to_emb_clust_ref=`grep net_analysis_$i $EXEC_PATH/posterior_analysis/index_execution | cut -f 2`
+        mkdir -p $path_to_autoflow_exec
+        mkdir -p $path_to_autoflow_exec/Dim.$i
+        variables=`echo -e "
+            \\$path_to_emb_clust_ref=$path_to_emb_clust_ref
+        " | tr -d [:space:]`
+        AutoFlow -e -w $TEMPLATES_PATH/check_embedding_stability.af -V $variables -o $path_to_autoflow_exec/Dim.$i -c 1 -m 20gb -t 0-10:00:00 -n cal $2
+    done
 fi
 
 if [ "$1" == "check" ] ; then

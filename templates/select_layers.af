@@ -1,0 +1,51 @@
+%mfa_all){
+    source ~/initializes/init_Hunter_dev
+    ln -s $datasets/sample_cohort/* .
+    mkdir -p results
+    ?
+    multivar_mine.R -i "miRNA_n.txt,variants.txt,severity.txt,severity_scales.txt,phenotypes_n.txt,genes_n.txt,metabolomics.txt" \
+    -A "miRNA_n.txt:s,genes_n.txt:s,phenotypes_n.txt:n,metabolomics.txt:s" -S "variants.txt:n,severity.txt:n,severity_scales.txt:c" \ 
+    -c -n 2 -o ./results --seed 123
+}
+
+%mfa_without_[miRNA;genes;phenotypes;metabolomics]){
+    source ~/initializes/init_Hunter_dev
+    ln -s $datasets/sample_cohort/* .
+    mkdir -p results
+    # removing the corresponding layers from the analysis
+    all_layers="miRNA_n.txt,variants.txt,severity.txt,severity_scales.txt,phenotypes_n.txt,genes_n.txt,metabolomics.txt"
+    active_layers="miRNA_n.txt:s,genes_n.txt:s,phenotypes_n.txt:n,metabolomics.txt:s"
+    supplementary_layers="variants.txt:n,severity.txt:n,severity_scales.txt:c"
+    echo $all_layers | tr -s "," "\n" | grep -v (*) | tr "\n" "," | sed 's/,$//g' > datasets.txt
+    echo $active_layers | tr -s "," "\n" | grep -v (*) | tr "\n" "," | sed 's/,$//g' > active_layers.txt
+    echo $supplementary_layers | tr -s "," "\n" | grep -v (*) | tr "\n" "," | sed 's/,$//g' > supplementary_layers.txt
+    all_layers=`cat datasets.txt`
+    active_layers=`cat active_layers.txt`
+    supplementary_layers=`cat supplementary_layers.txt`
+    ?
+    multivar_mine.R -i $all_layers -A $active_layers -S $supplementary_layers -c -n 2 -o ./results --seed 123
+}
+
+get_rv_coeff_[miRNA;genes;phenotypes;metabolomics]){
+    # loading the python script necessary
+    source ~soft_bio_267/initializes/init_python
+    export PATH=$aux_scripts:$PATH
+    tail -n +2 $datasets/sample_cohort/severity.txt > groups.txt
+    echo -e "(*)" > metrics.txt
+    echo -e "------------------------------" >> metrics.txt
+    ?
+    mfa_ablation_metrics.py --input_full mfa_all)/results/PCA_results/mfa_hcpc.txt \
+    --input_ablation !mfa_without_*!/results/PCA_results/mfa_hcpc.txt \
+    --groups "groups.txt" >> metrics.txt
+    echo -e "" >> metrics.txt
+}
+
+report_all){
+    source ~soft_bio_267/initializes/init_python
+    export PATH=$aux_scripts:$PATH
+    ?
+    cat !get_rv_coeff_!/metrics.txt > all_metrics.txt
+}
+
+
+
