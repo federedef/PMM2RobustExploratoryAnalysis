@@ -29,9 +29,6 @@ The analysis is organized into the following stages:
 8. Node2vec/HDBSCAN stability analysis
 9. Workflow monitoring and recovery
 
-Intermediate and parsed datasets are generated locally and are not intended
-to be versioned.
-
 ---
 
 ## Software environment
@@ -56,10 +53,10 @@ The analyses were performed using Python and R.
 
 Workflow-specific software:
 
-- PETS (`py_pets`) 1.3.6.post1.dev4+g401390db8
-- `py_exp_calc` 1.2.1.post1.dev19+g21153c22b
-- AutoFlow Next 1.1.7.post1.dev66+gaf5a2b4a4
-- NetAnalyzer: [ADD VERSION]
+- PETS (`py_pets`) 1.3.6
+- `py_exp_calc` 1.2.1
+- AutoFlow Next 1.1.7
+- NetAnalyzer: 1.1.0
 
 ### R environment
 
